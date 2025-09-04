@@ -1,8 +1,9 @@
 # Importa as bibliotecas necessárias
 import streamlit as st
 from datetime import datetime
-import openai # A biblioteca da OpenAI
-import os # Para gerenciar variáveis de ambiente e chaves de API
+from google.cloud import speech # A biblioteca do Google Cloud
+import os
+import io
 
 # --- Configuração da Página ---
 st.set_page_config(
@@ -15,28 +16,44 @@ st.set_page_config(
 if "notes" not in st.session_state:
     st.session_state.notes = []
 
-# --- Configuração da API da OpenAI ---
-# É mais seguro armazenar a chave de API em variáveis de ambiente.
-# Substitua 'SUA_CHAVE_DE_API_DA_OPENAI' pela sua chave.
-openai.api_key = os.getenv("OPENAI_API_KEY", "SUA_CHAVE_DE_API_DA_OPENAI")
+# --- Configuração da API do Google Cloud ---
+# Para autenticação, você deve definir a variável de ambiente
+# GOOGLE_APPLICATION_CREDENTIALS que aponta para o seu arquivo JSON de credenciais.
+# Exemplo de como fazer no terminal:
+# export GOOGLE_APPLICATION_CREDENTIALS="/caminho/para/seu/arquivo.json"
+# Ou, para fins de teste, você pode carregar o JSON diretamente (não recomendado para produção).
 
-# --- Função de Transcrição Real com a API da OpenAI (Whisper) ---
-def transcribe_audio(audio_file):
+# --- Função de Transcrição Real com a API do Google Cloud ---
+def transcribe_audio_google(audio_file):
     """
-    Função que usa a API da OpenAI para transcrever um arquivo de áudio.
+    Função que usa a API do Google Cloud para transcrever um arquivo de áudio.
     """
     try:
-        # Abre o arquivo de áudio para a API
-        with open("uploaded_audio.mp3", "wb") as f:
-            f.write(audio_file.getbuffer())
+        # Instancia o cliente da API
+        client = speech.SpeechClient()
         
-        # Chama a API de áudio da OpenAI
-        with open("uploaded_audio.mp3", "rb") as audio:
-            transcription = openai.Audio.transcribe("whisper-1", audio)
+        # Lê o arquivo de áudio e o prepara para a API
+        audio_bytes = audio_file.read()
+        audio = speech.RecognitionAudio(content=audio_bytes)
         
-        return transcription.text
+        config = speech.RecognitionConfig(
+            encoding=speech.RecognitionConfig.AudioEncoding.OGG_OPUS, # ou MP3, WAV
+            sample_rate_hertz=48000, # Ajuste conforme seu arquivo
+            language_code="pt-BR", # Idioma do áudio
+        )
+        
+        with st.spinner("Transcrevendo áudio... Isso pode levar algum tempo."):
+            response = client.recognize(config=config, audio=audio)
+        
+        # Concatena os resultados da transcrição
+        transcript = ""
+        for result in response.results:
+            transcript += result.alternatives[0].transcript + " "
+        
+        return transcript
     except Exception as e:
         st.error(f"Erro ao transcrever o áudio: {e}")
+        st.info("Verifique se a variável de ambiente GOOGLE_APPLICATION_CREDENTIALS está configurada corretamente.")
         return None
 
 # --- Título e Descrição do Aplicativo ---
@@ -52,8 +69,7 @@ if uploaded_file is not None:
     st.audio(uploaded_file, format='audio/wav')
     
     if st.button("Transcrever Áudio"):
-        with st.spinner("Transcrevendo áudio... Isso pode levar alguns segundos."):
-            transcribed_text = transcribe_audio(uploaded_file)
+        transcribed_text = transcribe_audio_google(uploaded_file)
         
         if transcribed_text:
             st.success("Transcrição concluída com sucesso!")
