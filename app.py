@@ -2,6 +2,7 @@
 import streamlit as st
 from datetime import datetime
 from google.cloud import speech # A biblioteca do Google Cloud
+from google.oauth2 import service_account
 import os
 import io
 
@@ -17,11 +18,15 @@ if "notes" not in st.session_state:
     st.session_state.notes = []
 
 # --- Configuração da API do Google Cloud ---
-# Para autenticação, você deve definir a variável de ambiente
-# GOOGLE_APPLICATION_CREDENTIALS que aponta para o seu arquivo JSON de credenciais.
-# Exemplo de como fazer no terminal:
-# export GOOGLE_APPLICATION_CREDENTIALS="/caminho/para/seu/arquivo.json"
-# Ou, para fins de teste, você pode carregar o JSON diretamente (não recomendado para produção).
+# Verifica se a variável de ambiente GOOGLE_APPLICATION_CREDENTIALS está configurada.
+# Esta é a forma recomendada e mais segura de autenticação.
+if "GOOGLE_APPLICATION_CREDENTIALS" in os.environ:
+    creds_path = os.environ["GOOGLE_APPLICATION_CREDENTIALS"]
+    st.success(f"Caminho das credenciais do Google Cloud encontrado: {creds_path}")
+else:
+    st.error("Variável de ambiente 'GOOGLE_APPLICATION_CREDENTIALS' não encontrada.")
+    st.info("Por favor, configure esta variável com o caminho para o seu arquivo JSON de credenciais.")
+    # Exemplo: export GOOGLE_APPLICATION_CREDENTIALS=\"/caminho/para/seu/arquivo.json\"
 
 # --- Função de Transcrição Real com a API do Google Cloud ---
 def transcribe_audio_google(audio_file):
@@ -30,20 +35,23 @@ def transcribe_audio_google(audio_file):
     """
     try:
         # Instancia o cliente da API
+        # Usa o caminho do arquivo JSON de credenciais definido na variável de ambiente.
         client = speech.SpeechClient()
         
-        # Lê o arquivo de áudio e o prepara para a API
+        # Lê o arquivo de áudio em bytes
         audio_bytes = audio_file.read()
         audio = speech.RecognitionAudio(content=audio_bytes)
-        
+
+        # Configuração da transcrição
         config = speech.RecognitionConfig(
-            encoding=speech.RecognitionConfig.AudioEncoding.OGG_OPUS, # ou MP3, WAV
-            sample_rate_hertz=48000, # Ajuste conforme seu arquivo
-            language_code="pt-BR", # Idioma do áudio
+            encoding=speech.RecognitionConfig.AudioEncoding.OGG_OPUS, 
+            sample_rate_hertz=16000, # A maioria dos áudios de WhatsApp tem 16000 Hz
+            language_code="pt-BR",
         )
         
-        with st.spinner("Transcrevendo áudio... Isso pode levar algum tempo."):
-            response = client.recognize(config=config, audio=audio)
+        st.info("Enviando áudio para a Google Cloud Speech-to-Text API...")
+        
+        response = client.recognize(config=config, audio=audio)
         
         # Concatena os resultados da transcrição
         transcript = ""
@@ -52,8 +60,8 @@ def transcribe_audio_google(audio_file):
         
         return transcript
     except Exception as e:
+        # Exibe o erro exato que a API retornou. Isso é crucial para o debugging.
         st.error(f"Erro ao transcrever o áudio: {e}")
-        st.info("Verifique se a variável de ambiente GOOGLE_APPLICATION_CREDENTIALS está configurada corretamente.")
         return None
 
 # --- Título e Descrição do Aplicativo ---
@@ -63,10 +71,10 @@ st.markdown("---")
 
 # --- Seção de Transcrição de Áudio ---
 st.subheader("Converter Áudio em Nota")
-uploaded_file = st.file_uploader("Escolha um arquivo de áudio (.mp3, .wav, etc.)", type=["mp3", "wav", "ogg"])
+uploaded_file = st.file_uploader("Escolha um arquivo de áudio (.mp3, .wav, .ogg)", type=["mp3", "wav", "ogg"])
 
 if uploaded_file is not None:
-    st.audio(uploaded_file, format='audio/wav')
+    st.audio(uploaded_file, format='audio/ogg')
     
     if st.button("Transcrever Áudio"):
         transcribed_text = transcribe_audio_google(uploaded_file)
