@@ -1,10 +1,11 @@
 # Importa as bibliotecas necessárias
 import streamlit as st
 from datetime import datetime
-from google.cloud import speech # A biblioteca do Google Cloud
+from google.cloud import speech
 from google.oauth2 import service_account
 import os
 import io
+import json
 
 # --- Configuração da Página ---
 st.set_page_config(
@@ -18,26 +19,37 @@ if "notes" not in st.session_state:
     st.session_state.notes = []
 
 # --- Configuração da API do Google Cloud ---
-# Verifica se a variável de ambiente GOOGLE_APPLICATION_CREDENTIALS está configurada.
-# Esta é a forma recomendada e mais segura de autenticação.
-if "GOOGLE_APPLICATION_CREDENTIALS" in os.environ:
-    creds_path = os.environ["GOOGLE_APPLICATION_CREDENTIALS"]
-    st.success(f"Caminho das credenciais do Google Cloud encontrado: {creds_path}")
-else:
-    st.error("Variável de ambiente 'GOOGLE_APPLICATION_CREDENTIALS' não encontrada.")
-    st.info("Por favor, configure esta variável com o caminho para o seu arquivo JSON de credenciais.")
-    # Exemplo: export GOOGLE_APPLICATION_CREDENTIALS=\"/caminho/para/seu/arquivo.json\"
+def get_google_client(credentials_json):
+    """
+    Retorna um cliente do Google Cloud Speech-to-Text autenticado.
+    """
+    try:
+        credentials = service_account.Credentials.from_service_account_info(json.loads(credentials_json))
+        return speech.SpeechClient(credentials=credentials)
+    except Exception as e:
+        st.error(f"Erro de autenticação: {e}")
+        st.info("Por favor, cole o conteúdo completo e válido do seu arquivo JSON de credenciais.")
+        return None
+
+# --- Formulário para Inserir Credenciais ---
+st.markdown("### Credenciais da Google Cloud")
+st.info("Para usar a transcrição de voz, cole o conteúdo do seu arquivo JSON de credenciais da conta de serviço do Google Cloud abaixo.")
+credentials_input = st.text_area("Cole o conteúdo do arquivo JSON aqui:", height=250, key="creds_input")
 
 # --- Função de Transcrição Real com a API do Google Cloud ---
 def transcribe_audio_google(audio_file):
     """
     Função que usa a API do Google Cloud para transcrever um arquivo de áudio.
     """
+    if not credentials_input:
+        st.error("Por favor, insira as credenciais para continuar.")
+        return None
+
+    client = get_google_client(credentials_input)
+    if client is None:
+        return None
+    
     try:
-        # Instancia o cliente da API
-        # Usa o caminho do arquivo JSON de credenciais definido na variável de ambiente.
-        client = speech.SpeechClient()
-        
         # Lê o arquivo de áudio em bytes
         audio_bytes = audio_file.read()
         audio = speech.RecognitionAudio(content=audio_bytes)
@@ -45,7 +57,7 @@ def transcribe_audio_google(audio_file):
         # Configuração da transcrição
         config = speech.RecognitionConfig(
             encoding=speech.RecognitionConfig.AudioEncoding.OGG_OPUS, 
-            sample_rate_hertz=16000, # A maioria dos áudios de WhatsApp tem 16000 Hz
+            sample_rate_hertz=16000,
             language_code="pt-BR",
         )
         
@@ -60,7 +72,6 @@ def transcribe_audio_google(audio_file):
         
         return transcript
     except Exception as e:
-        # Exibe o erro exato que a API retornou. Isso é crucial para o debugging.
         st.error(f"Erro ao transcrever o áudio: {e}")
         return None
 
