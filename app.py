@@ -1,11 +1,12 @@
 # Importa as bibliotecas necessárias
 import streamlit as st
 from datetime import datetime
-import time # Para simular o tempo de transcrição
+import openai # A biblioteca da OpenAI
+import os # Para gerenciar variáveis de ambiente e chaves de API
 
 # --- Configuração da Página ---
 st.set_page_config(
-    page_title="Notas de Reunião com Transcrição",
+    page_title="Notas de Reunião com Transcrição Real",
     page_icon="📝",
     layout="centered"
 )
@@ -14,28 +15,34 @@ st.set_page_config(
 if "notes" not in st.session_state:
     st.session_state.notes = []
 
+# --- Configuração da API da OpenAI ---
+# É mais seguro armazenar a chave de API em variáveis de ambiente.
+# Substitua 'SUA_CHAVE_DE_API_DA_OPENAI' pela sua chave.
+openai.api_key = os.getenv("OPENAI_API_KEY", "SUA_CHAVE_DE_API_DA_OPENAI")
+
+# --- Função de Transcrição Real com a API da OpenAI (Whisper) ---
+def transcribe_audio(audio_file):
+    """
+    Função que usa a API da OpenAI para transcrever um arquivo de áudio.
+    """
+    try:
+        # Abre o arquivo de áudio para a API
+        with open("uploaded_audio.mp3", "wb") as f:
+            f.write(audio_file.getbuffer())
+        
+        # Chama a API de áudio da OpenAI
+        with open("uploaded_audio.mp3", "rb") as audio:
+            transcription = openai.Audio.transcribe("whisper-1", audio)
+        
+        return transcription.text
+    except Exception as e:
+        st.error(f"Erro ao transcrever o áudio: {e}")
+        return None
+
 # --- Título e Descrição do Aplicativo ---
 st.title("📝 Aplicativo de Notas de Reunião")
 st.markdown("Crie notas a partir de texto ou transcreva o áudio de suas reuniões.")
 st.markdown("---")
-
-# --- Função de Transcrição (Simulada) ---
-def transcribe_audio_dummy(audio_file):
-    """
-    Função de demonstração que simula uma transcrição de áudio.
-    Em um projeto real, esta função seria substituída por uma chamada a uma
-    API de reconhecimento de voz.
-    """
-    # Acessar a API do Google Cloud Speech-to-Text, AWS Transcribe, ou OpenAI Whisper
-    # Aqui, retornamos um texto de exemplo para fins de demonstração.
-    st.info("Transcrevendo áudio... Isso pode levar alguns segundos.")
-    time.sleep(3) # Simula o tempo de processamento da API
-    return """
-    Olá a todos e bem-vindos à nossa reunião de planejamento do projeto. 
-    Hoje, nosso principal objetivo é revisar o progresso da equipe, 
-    discutir os próximos passos e atribuir as tarefas para a próxima sprint. 
-    Vamos começar com o relatório de status da semana passada.
-    """
 
 # --- Seção de Transcrição de Áudio ---
 st.subheader("Converter Áudio em Nota")
@@ -43,29 +50,31 @@ uploaded_file = st.file_uploader("Escolha um arquivo de áudio (.mp3, .wav, etc.
 
 if uploaded_file is not None:
     st.audio(uploaded_file, format='audio/wav')
+    
     if st.button("Transcrever Áudio"):
-        with st.spinner("Processando..."):
-            transcribed_text = transcribe_audio_dummy(uploaded_file)
+        with st.spinner("Transcrevendo áudio... Isso pode levar alguns segundos."):
+            transcribed_text = transcribe_audio(uploaded_file)
         
-        st.success("Transcrição concluída com sucesso!")
-        
-        # Cria um formulário para o usuário editar e salvar a nota transcrita
-        with st.form(key="transcription_form"):
-            st.markdown("### Transcrição da Reunião")
-            title = st.text_input("Título da Nota", value=f"Reunião em {datetime.now().strftime('%d/%m/%Y')}")
-            content = st.text_area("Texto Transcrito", value=transcribed_text, height=250)
+        if transcribed_text:
+            st.success("Transcrição concluída com sucesso!")
             
-            save_button = st.form_submit_button("Salvar Nota Transcrita")
-            
-            if save_button and title and content:
-                new_note = {
-                    "title": title,
-                    "content": content,
-                    "timestamp": datetime.now().strftime("%d/%m/%Y às %H:%M")
-                }
-                st.session_state.notes.append(new_note)
-                st.toast("Nota salva com sucesso!", icon="✅")
+            # Cria um formulário para o usuário editar e salvar a nota transcrita
+            with st.form(key="transcription_form"):
+                st.markdown("### Transcrição da Reunião")
+                title = st.text_input("Título da Nota", value=f"Reunião em {datetime.now().strftime('%d/%m/%Y')}")
+                content = st.text_area("Texto Transcrito", value=transcribed_text, height=250)
                 
+                save_button = st.form_submit_button("Salvar Nota Transcrita")
+                
+                if save_button and title and content:
+                    new_note = {
+                        "title": title,
+                        "content": content,
+                        "timestamp": datetime.now().strftime("%d/%m/%Y às %H:%M")
+                    }
+                    st.session_state.notes.append(new_note)
+                    st.toast("Nota salva com sucesso!", icon="✅")
+        
 # --- Formulário para Adicionar Nota Manualmente ---
 st.markdown("---")
 st.subheader("Adicionar Nova Nota Manualmente")
